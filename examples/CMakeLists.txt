@@ -7,6 +7,7 @@ target_link_libraries(kbgdb_service_example
     PRIVATE
         kbgdb_includes
         kbgdb_http
+        folly::folly
         gflags::gflags
 )
 

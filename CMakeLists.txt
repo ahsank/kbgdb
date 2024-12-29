@@ -2,9 +2,9 @@ cmake_minimum_required(VERSION 3.16)
 project(kbgdb VERSION 1.0.0 LANGUAGES CXX)
 
 # Add policy settings
-if(POLICY CMP0144)
-    cmake_policy(SET CMP0144 NEW)
-endif()
+# if(POLICY CMP0144)
+#     cmake_policy(SET CMP0144 NEW)
+# endif()
 
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 20)
@@ -20,9 +20,14 @@ option(BUILD_TESTS "Build tests" OFF)
 option(BUILD_EXAMPLES "Build examples" ON)
 option(USE_SYSTEM_DEPS "Use system-installed dependencies" ON)
 
+if(APPLE)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
+endif()
 # First add includes library
 add_library(kbgdb_includes INTERFACE)
-target_include_directories(kbgdb_includes INTERFACE
+target_include_directories(kbgdb_includes
+    BEFORE
+    INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
