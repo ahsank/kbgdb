@@ -47,12 +47,12 @@ public:
         const Fact& fact,
         const BindingSet& currentBindings) const;
 
+    void loadFromFile(const std::string& filename);
+
 private:
     std::vector<Rule> rules_;
     std::unordered_map<std::string, std::vector<Fact>> memory_facts_;
     std::vector<std::unique_ptr<StorageProvider>> external_providers_;
-    
-    void loadFromFile(const std::string& filename);
 };
 
 } // namespace kbgdb

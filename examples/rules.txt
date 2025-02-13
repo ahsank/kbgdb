@@ -1,13 +1,13 @@
 
-parent(john, bob).
-parent(john, mary).
-parent(bob, alice).
-parent(mary, tom).
+parent(john, bob)
+parent(john, mary)
+parent(bob, alice)
+parent(mary, tom)
 
-age(bob, 10).
-age(mary, 8).
-age(alice, 5).
-age(tom, 3).
+age(bob, 10)
+age(mary, 8)
+age(alice, 5)
+age(tom, 3)
 
-grandparent(X, Y) :- parent(X, Z), parent(Z, Y).
-sibling(X, Y) :- parent(Z, X), parent(Z, Y).
+grandparent(X, Y) :- parent(X, Z), parent(Z, Y)
+sibling(X, Y) :- parent(Z, X), parent(Z, Y)

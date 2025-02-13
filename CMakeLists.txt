@@ -16,7 +16,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 
 # Options
-option(BUILD_TESTS "Build tests" OFF)
+option(BUILD_TESTS "Build tests" ON)
 option(BUILD_EXAMPLES "Build examples" ON)
 option(USE_SYSTEM_DEPS "Use system-installed dependencies" ON)
 
@@ -44,4 +44,12 @@ endif()
 if(BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
+endif()
+
+option(CODE_COVERAGE "Enable coverage reporting" OFF)
+if(CODE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(knowledge_base PRIVATE --coverage -O0 -g)
+    target_link_libraries(knowledge_base PRIVATE --coverage)
+    target_compile_options(kb_tests PRIVATE --coverage -O0 -g)
+    target_link_libraries(kb_tests PRIVATE --coverage)
 endif()

@@ -5,29 +5,45 @@
 #include <iostream>
 
 namespace kbgdb {
-Fact QueryParser::parse(const std::string& query_str) {
+Fact QueryParser::parse(const std::string& input) {
+    tokens_ = tokenize(input);
     current_ = 0;
-    tokens_ = tokenize(query_str);
+
+    // Validate basic structure
+    if (tokens_.empty()) {
+        throw std::runtime_error("Empty query");
+    }
 
     // Parse predicate
-    auto predicateToken = consume(Token::IDENTIFIER);
-    std::string predicate = predicateToken.value;
+    if (!match(Token::IDENTIFIER)) {
+        throw std::runtime_error("Expected predicate name");
+    }
+    std::string predicate = tokens_[current_ - 1].value;
 
-    // Expect opening parenthesis
-    consume(Token::LPAREN);
+    // Parse opening parenthesis
+    if (!match(Token::LPAREN)) {
+        throw std::runtime_error("Expected '(' after predicate");
+    }
 
     // Parse terms
     std::vector<Term> terms;
     while (!isAtEnd() && !check(Token::RPAREN)) {
-        if (!terms.empty()) {
-            consume(Token::COMMA);
-        }
         terms.push_back(parseTerm());
+        
+        if (!isAtEnd() && !check(Token::RPAREN)) {
+            if (!match(Token::COMMA)) {
+                throw std::runtime_error("Expected ',' between terms");
+            }
+        }
     }
 
-    // Expect closing parenthesis
+    // Parse closing parenthesis
+    if (!match(Token::RPAREN)) {
+        throw std::runtime_error("Expected ')' after terms");
+    }
+
     if (!isAtEnd()) {
-        consume(Token::RPAREN);
+        throw std::runtime_error("Unexpected tokens after ')'");
     }
 
     return Fact(predicate, terms);
@@ -100,6 +116,10 @@ void QueryParser::addToken(std::vector<Token>& tokens, const std::string& value)
 }
 
 Term QueryParser::parseTerm() {
+    if (isAtEnd()) {
+        throw std::runtime_error("Unexpected end of input while parsing term");
+    }
+    
     Token token = advance();
     Term term;
     

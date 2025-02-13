@@ -33,10 +33,7 @@ public:
         return evaluateBodyGoals(rule.getBody(), *headBindings);
     }
 
-private:
-    const KnowledgeBase* kb_;
-
-    std::string bindingsToString(const BindingSet& bindings) const {
+    static std::string bindingsToString(const BindingSet& bindings) {
         std::ostringstream oss;
         oss << "{";
         bool first = true;
@@ -48,6 +45,9 @@ private:
         oss << "}";
         return oss.str();
     }
+private:
+    const KnowledgeBase* kb_;
+
 
     std::optional<BindingSet> unifyTerms(
         const std::vector<Term>& queryTerms,
@@ -343,7 +343,11 @@ folly::Future<std::vector<BindingSet>> KnowledgeBase::evaluateGoal(
     for (const auto& fact : facts) {
         std::cout << "Checking fact: " << fact.toString() << std::endl;
         if (auto newBindings = unifyFact(goal, fact, bindings)) {
+            std::cout << "Unified " << fact.toString() << " with binding: " 
+              << RuleEvaluator::bindingsToString(bindings) << std::endl;
             factResults.push_back(*newBindings);
+        } else {
+            std::cout << "Unification failed: " << fact.toString() << std::endl;
         }
     }
 
