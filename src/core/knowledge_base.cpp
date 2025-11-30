@@ -21,7 +21,7 @@ public:
         std::cout << "Initial bindings: " << bindingsToString(initialBindings) << std::endl;
         
         // First unify query with rule head
-        auto headBindings = unifyTerms(query.getTerms(), rule.getHead().getTerms(), initialBindings);
+        auto headBindings = unifyTerms(query.terms_, rule.head_.terms_, initialBindings);
         if (!headBindings) {
             std::cout << "Head unification failed" << std::endl;
             return folly::makeFuture<std::vector<BindingSet>>(std::vector<BindingSet>{});
@@ -30,7 +30,7 @@ public:
         std::cout << "Head unified with bindings: " << bindingsToString(*headBindings) << std::endl;
 
         // Now evaluate all body goals with the bindings
-        return evaluateBodyGoals(rule.getBody(), *headBindings);
+        return evaluateBodyGoals(rule.body_, *headBindings);
     }
 
     static std::string bindingsToString(const BindingSet& bindings) {
@@ -255,13 +255,13 @@ void KnowledgeBase::loadFromFile(const std::string& filename) {
 }
 
 void KnowledgeBase::addFact(const Fact& fact) {
-    if (fact.getPredicate().empty()) {
+    if (fact.predicate_.empty()) {
         std::cerr << "Warning: Attempting to add fact with empty predicate" << std::endl;
         return;
     }
     
     std::cout << "Adding fact: " << fact.toString() << std::endl;
-    memory_facts_[fact.getPredicate()].push_back(fact);
+    memory_facts_[fact.predicate_].push_back(fact);
 }
 
 void KnowledgeBase::addRule(const Rule& rule) {
@@ -297,14 +297,14 @@ std::optional<BindingSet> KnowledgeBase::unifyFact(
     const Fact& fact,
     const BindingSet& currentBindings) const {
     
-    if (goal.getPredicate() != fact.getPredicate() ||
-        goal.getTerms().size() != fact.getTerms().size()) {
+    if (goal.predicate_ != fact.predicate_ ||
+        goal.terms_.size() != fact.terms_.size()) {
         return std::nullopt;
     }
 
     BindingSet newBindings = currentBindings;
-    const auto& goalTerms = goal.getTerms();
-    const auto& factTerms = fact.getTerms();
+    const auto& goalTerms = goal.terms_;
+    const auto& factTerms = fact.terms_;
 
     for (size_t i = 0; i < goalTerms.size(); i++) {
         const auto& goalTerm = goalTerms[i];
@@ -335,10 +335,10 @@ folly::Future<std::vector<BindingSet>> KnowledgeBase::evaluateGoal(
     
     // First try direct facts
     std::vector<BindingSet> factResults;
-    auto facts = getMemoryFacts(goal.getPredicate());
+    auto facts = getMemoryFacts(goal.predicate_);
     
     std::cout << "Found " << facts.size() << " facts for predicate: " 
-              << goal.getPredicate() << std::endl;
+              << goal.predicate_ << std::endl;
 
     for (const auto& fact : facts) {
         std::cout << "Checking fact: " << fact.toString() << std::endl;
@@ -360,7 +360,7 @@ folly::Future<std::vector<BindingSet>> KnowledgeBase::evaluateGoal(
     
     for (const auto& rule : allRules) {
         std::cout << "Evaluating rule: " << rule.toString() << std::endl;
-        if (rule.getHead().getPredicate() == goal.getPredicate()) {
+        if (rule.head_.predicate_ == goal.predicate_) {
             std::cout << "Rule predicate matches, evaluating..." << std::endl;
             ruleResults.push_back(evaluator.evaluateRule(rule, goal, bindings));
         }

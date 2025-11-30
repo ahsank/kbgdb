@@ -12,8 +12,8 @@ protected:
 TEST_F(QueryParserTest, SimpleQuery) {
     Fact fact = parser.parse("parent(john, mary)");
     
-    EXPECT_EQ(fact.getPredicate(), "parent");
-    const auto& terms = fact.getTerms();
+    EXPECT_EQ(fact.predicate_, "parent");
+    const auto& terms = fact.terms_;
     ASSERT_EQ(terms.size(), 2);
     EXPECT_EQ(terms[0].type, TermType::CONSTANT);
     EXPECT_EQ(terms[0].value, "john");
@@ -24,9 +24,9 @@ TEST_F(QueryParserTest, SimpleQuery) {
 TEST_F(QueryParserTest, QueryWithVariables) {
     parser.setRuleMode(false); // Query mode
     Fact fact = parser.parse("parent(?X, mary)");
-    
-    EXPECT_EQ(fact.getPredicate(), "parent");
-    const auto& terms = fact.getTerms();
+
+    EXPECT_EQ(fact.predicate_, "parent");
+    const auto& terms = fact.terms_;
     ASSERT_EQ(terms.size(), 2);
     EXPECT_EQ(terms[0].type, TermType::VARIABLE);
     EXPECT_EQ(terms[0].value, "X");
@@ -37,9 +37,9 @@ TEST_F(QueryParserTest, QueryWithVariables) {
 TEST_F(QueryParserTest, RuleWithVariables) {
     parser.setRuleMode(true); // Rule mode
     Fact fact = parser.parse("parent(X, mary)");
-    
-    EXPECT_EQ(fact.getPredicate(), "parent");
-    const auto& terms = fact.getTerms();
+
+    EXPECT_EQ(fact.predicate_, "parent");
+    const auto& terms = fact.terms_;
     ASSERT_EQ(terms.size(), 2);
     EXPECT_EQ(terms[0].type, TermType::VARIABLE);
     EXPECT_EQ(terms[0].value, "X");
@@ -49,9 +49,9 @@ TEST_F(QueryParserTest, RuleWithVariables) {
 
 TEST_F(QueryParserTest, QueryWithNumbers) {
     Fact fact = parser.parse("age(john, 42)");
-    
-    EXPECT_EQ(fact.getPredicate(), "age");
-    const auto& terms = fact.getTerms();
+
+    EXPECT_EQ(fact.predicate_, "age");
+    const auto& terms = fact.terms_;
     ASSERT_EQ(terms.size(), 2);
     EXPECT_EQ(terms[0].type, TermType::CONSTANT);
     EXPECT_EQ(terms[0].value, "john");
@@ -61,9 +61,9 @@ TEST_F(QueryParserTest, QueryWithNumbers) {
 
 TEST_F(QueryParserTest, QueryWithWhitespace) {
     Fact fact = parser.parse("  parent  (  john  ,  mary  )  ");
-    
-    EXPECT_EQ(fact.getPredicate(), "parent");
-    const auto& terms = fact.getTerms();
+
+    EXPECT_EQ(fact.predicate_, "parent");
+    const auto& terms = fact.terms_;
     ASSERT_EQ(terms.size(), 2);
     EXPECT_EQ(terms[0].value, "john");
     EXPECT_EQ(terms[1].value, "mary");
@@ -81,7 +81,7 @@ TEST_F(QueryParserTest, UnderscoreVariable) {
     parser.setRuleMode(true);
     Fact fact = parser.parse("parent(_X, _)");
     
-    const auto& terms = fact.getTerms();
+    const auto& terms = fact.terms_;
     ASSERT_EQ(terms.size(), 2);
     EXPECT_EQ(terms[0].type, TermType::VARIABLE);
     EXPECT_EQ(terms[0].value, "_X");

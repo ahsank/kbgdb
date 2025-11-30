@@ -22,6 +22,5 @@ target_link_libraries(simple_query_example
         kbgdb_core
         kbgdb_storage
         kbgdb_query
-        kbgdb_http
         folly::folly
 )

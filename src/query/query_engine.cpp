@@ -70,7 +70,7 @@ QueryEngine::proveGoal(const Fact& goal, const BindingSet& bindings) {
     std::vector<folly::Future<std::vector<BindingSet>>> futures;
 
     // Check memory facts
-    auto memoryFacts = kb_->getMemoryFacts(goal.getPredicate());
+    auto memoryFacts = kb_->getMemoryFacts(goal.predicate_);
     for (const auto& fact : memoryFacts) {
         if (auto newBindings = unify(goal, fact, bindings)) {
             futures.push_back(folly::makeFuture<std::vector<BindingSet>>({*newBindings}));
@@ -98,11 +98,11 @@ QueryEngine::proveGoal(const Fact& goal, const BindingSet& bindings) {
 
     // Check rules
     for (const auto& rule : kb_->getRules()) {
-        if (rule.getHead().getPredicate() == goal.getPredicate()) {
-            if (auto headBindings = unify(goal, rule.getHead(), bindings)) {
+        if (rule.head_.predicate_ == goal.predicate_) {
+            if (auto headBindings = unify(goal, rule.head_, bindings)) {
                 // Prove all body goals
                 std::vector<folly::Future<std::vector<BindingSet>>> bodyFutures;
-                for (const auto& bodyGoal : rule.getBody()) {
+                for (const auto& bodyGoal : rule.body_) {
                     bodyFutures.push_back(proveGoal(bodyGoal, *headBindings));
                 }
 
@@ -130,14 +130,14 @@ QueryEngine::proveGoal(const Fact& goal, const BindingSet& bindings) {
 
 std::optional<BindingSet> 
 QueryEngine::unify(const Fact& goal, const Fact& fact, const BindingSet& bindings) {
-    if (goal.getPredicate() != fact.getPredicate() ||
-        goal.getTerms().size() != fact.getTerms().size()) {
+    if (goal.predicate_ != fact.predicate_ ||
+        goal.terms_.size() != fact.terms_.size()) {
         return std::nullopt;
     }
 
     BindingSet newBindings = bindings;
-    const auto& goalTerms = goal.getTerms();
-    const auto& factTerms = fact.getTerms();
+    const auto& goalTerms = goal.terms_;
+    const auto& factTerms = fact.terms_;
 
     for (size_t i = 0; i < goalTerms.size(); ++i) {
         const auto& goalTerm = goalTerms[i];

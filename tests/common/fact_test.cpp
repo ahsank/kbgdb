@@ -39,13 +39,13 @@ protected:
 
 TEST_F(FactTest, ConstructAndGetPredicate) {
     auto fact = createSampleFact();
-    EXPECT_EQ(fact.getPredicate(), "parent");
+    EXPECT_EQ(fact.predicate_, "parent");
 }
 
 TEST_F(FactTest, GetTerms) {
     auto fact = createSampleFact();
-    const auto& terms = fact.getTerms();
-    
+    const auto& terms = fact.terms_;
+
     ASSERT_EQ(terms.size(), 2);
     EXPECT_EQ(terms[0].type, TermType::CONSTANT);
     EXPECT_EQ(terms[0].value, "john");
@@ -60,10 +60,10 @@ TEST_F(FactTest, ToString) {
 
 TEST_F(FactTest, FactSource) {
     auto fact = createSampleFact();
-    EXPECT_EQ(fact.getSource(), FactSource::MEMORY);
-    
-    fact.setSource(FactSource::ROCKSDB);
-    EXPECT_EQ(fact.getSource(), FactSource::ROCKSDB);
+    EXPECT_EQ(fact.source_, FactSource::MEMORY);
+
+    fact.source_ = FactSource::ROCKSDB;
+    EXPECT_EQ(fact.source_, FactSource::ROCKSDB);
 }
 
 TEST_F(FactTest, FactWithVariables) {

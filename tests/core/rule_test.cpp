@@ -29,11 +29,11 @@ protected:
 
 TEST_F(RuleTest, Construction) {
     Rule rule(createHead(), createBody());
-    
-    EXPECT_EQ(rule.getHead().getPredicate(), "grandparent");
-    ASSERT_EQ(rule.getBody().size(), 2);
-    EXPECT_EQ(rule.getBody()[0].getPredicate(), "parent");
-    EXPECT_EQ(rule.getBody()[1].getPredicate(), "parent");
+
+    EXPECT_EQ(rule.head_.predicate_, "grandparent");
+    ASSERT_EQ(rule.body_.size(), 2);
+    EXPECT_EQ(rule.body_[0].predicate_, "parent");
+    EXPECT_EQ(rule.body_[1].predicate_, "parent");
 }
 
 TEST_F(RuleTest, ToString) {
@@ -78,6 +78,5 @@ TEST_F(RuleTest, ComplexRule) {
     EXPECT_EQ(rule.toString(), 
         "can_drive(?Person, car) :- person(?Person), age(?Person, ?Age), has_license(?Person).");
 }
-
 } // namespace
 } // namespace kbgdb

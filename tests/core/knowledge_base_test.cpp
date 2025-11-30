@@ -115,7 +115,7 @@ TEST_F(KnowledgeBaseTest, RuleEvaluation) {
         Term{TermType::CONSTANT, "alice"}
     }));
     
-    writeTestData("grandparent(X, Z) :- parent(X, Y), parent(Y, Z).");
+    writeTestData("grandparent(_X, _Z) :- parent(_X, _Y), parent(_Y, _Z).");
     kb->loadFromFile(test_file.string());
     
     bool queryCompleted = false;
@@ -225,7 +225,7 @@ TEST_F(KnowledgeBaseTest, LoadFromFile) {
         parent(john, bob).
         parent(mary, alice).
         
-        sibling(X, Y) :- parent(Z, X), parent(Z, Y).
+        sibling(?X, ?Y) :- parent(?Z, ?X), parent(?Z, ?Y).
     )");
     
     kb = std::make_unique<KnowledgeBase>(test_file.string());
