@@ -1,13 +1,28 @@
+% Example knowledge base for KBGDB
+% Family relationships
 
-parent(john, bob)
-parent(john, mary)
-parent(bob, alice)
-parent(mary, tom)
+% Facts: parent(Parent, Child)
+parent(john, bob).
+parent(john, mary).
+parent(bob, alice).
+parent(bob, tom).
+parent(mary, sue).
 
-age(bob, 10)
-age(mary, 8)
-age(alice, 5)
-age(tom, 3)
+% Facts: age(Person, Age)
+age(bob, 35).
+age(mary, 33).
+age(alice, 10).
+age(tom, 8).
+age(sue, 12).
 
-grandparent(X, Y) :- parent(X, Z), parent(Z, Y)
-sibling(X, Y) :- parent(Z, X), parent(Z, Y)
+% Rules
+
+% grandparent(X, Z) if X is parent of Y and Y is parent of Z
+grandparent(X, Z) :- parent(X, Y), parent(Y, Z).
+
+% sibling(X, Y) if they share a parent (note: includes self!)
+sibling(X, Y) :- parent(Z, X), parent(Z, Y).
+
+% ancestor(X, Y) - transitive closure of parent
+ancestor(X, Y) :- parent(X, Y).
+ancestor(X, Z) :- parent(X, Y), ancestor(Y, Z).

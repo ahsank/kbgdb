@@ -1,111 +1,131 @@
 #include "core/knowledge_base.h"
-#include "storage/storage_provider.h"
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
-#include <folly/executors/GlobalExecutor.h>
-#include <folly/futures/Future.h>
 #include <filesystem>
 #include <fstream>
 
 namespace kbgdb {
 namespace {
 
-// Mock storage provider for testing external storage
-class MockStorageProvider : public StorageProvider {
-public:
-    MOCK_METHOD(bool, canHandle, (const Fact&), (override));
-    MOCK_METHOD(folly::Future<std::vector<Fact>>, getFacts, (const Fact&), (override));
-};
-
-// Custom matcher for folly::Future
-MATCHER_P(ReturnsFuture, value, "") {
-    return true;  // Simplified matching for test purposes
-}
-
 class KnowledgeBaseTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        // Create a temporary test file
-        test_file = std::filesystem::temp_directory_path() / "kb_test.pl";
-        kb = std::make_unique<KnowledgeBase>("");
+        kb = std::make_unique<KnowledgeBase>();
+        testFile = std::filesystem::temp_directory_path() / "kb_test.pl";
     }
 
     void TearDown() override {
-        // Clean up test file
-        if (std::filesystem::exists(test_file)) {
-            std::filesystem::remove(test_file);
+        if (std::filesystem::exists(testFile)) {
+            std::filesystem::remove(testFile);
         }
     }
 
-    void writeTestData(const std::string& content) {
-        std::ofstream file(test_file);
+    void writeTestFile(const std::string& content) {
+        std::ofstream file(testFile);
         file << content;
         file.close();
     }
 
-    std::filesystem::path test_file;
     std::unique_ptr<KnowledgeBase> kb;
+    std::filesystem::path testFile;
 };
 
+// ============================================================================
+// Basic Fact Tests
+// ============================================================================
+
 TEST_F(KnowledgeBaseTest, AddAndRetrieveFact) {
-    Fact fact("person", {Term{TermType::CONSTANT, "john"}});
-    kb->addFact(fact);
+    kb->addFact(Fact("person", {Term{TermType::CONSTANT, "john"}}));
     
-    auto facts = kb->getMemoryFacts("person");
+    auto facts = kb->getFacts("person");
     ASSERT_EQ(facts.size(), 1);
     EXPECT_EQ(facts[0].toString(), "person(john)");
 }
 
-TEST_F(KnowledgeBaseTest, AddAndRetrieveMultipleFacts) {
+TEST_F(KnowledgeBaseTest, AddMultipleFacts) {
     kb->addFact(Fact("person", {Term{TermType::CONSTANT, "john"}}));
     kb->addFact(Fact("person", {Term{TermType::CONSTANT, "mary"}}));
-    kb->addFact(Fact("age", {Term{TermType::CONSTANT, "john"}, Term{TermType::NUMBER, "30"}}));
+    kb->addFact(Fact("age", {
+        Term{TermType::CONSTANT, "john"}, 
+        Term{TermType::NUMBER, "30"}
+    }));
     
-    auto personFacts = kb->getMemoryFacts("person");
+    auto personFacts = kb->getFacts("person");
     ASSERT_EQ(personFacts.size(), 2);
     
-    auto ageFacts = kb->getMemoryFacts("age");
+    auto ageFacts = kb->getFacts("age");
     ASSERT_EQ(ageFacts.size(), 1);
     EXPECT_EQ(ageFacts[0].toString(), "age(john, 30)");
 }
 
-TEST_F(KnowledgeBaseTest, SimpleQuery) {
+// ============================================================================
+// Simple Query Tests (Synchronous!)
+// ============================================================================
+
+TEST_F(KnowledgeBaseTest, SimpleQuerySingleResult) {
     kb->addFact(Fact("person", {Term{TermType::CONSTANT, "john"}}));
     
-    bool queryCompleted = false;
-    kb->query("person(?X)")
-        .thenValue([&](std::vector<BindingSet> results) {
-            EXPECT_EQ(results.size(), 1);
-            EXPECT_EQ(results[0].get("X"), "john");
-            queryCompleted = true;
-        })
-        .wait();
+    auto results = kb->query("person(?X)");
     
-    EXPECT_TRUE(queryCompleted);
+    ASSERT_EQ(results.size(), 1);
+    EXPECT_EQ(results[0].get("X"), "john");
 }
 
-TEST_F(KnowledgeBaseTest, QueryWithMultipleResults) {
+TEST_F(KnowledgeBaseTest, SimpleQueryMultipleResults) {
     kb->addFact(Fact("person", {Term{TermType::CONSTANT, "john"}}));
     kb->addFact(Fact("person", {Term{TermType::CONSTANT, "mary"}}));
+    kb->addFact(Fact("person", {Term{TermType::CONSTANT, "bob"}}));
     
-    bool queryCompleted = false;
-    kb->query("person(?X)")
-        .thenValue([&](std::vector<BindingSet> results) {
-            EXPECT_EQ(results.size(), 2);
-            std::vector<std::string> names;
-            for (const auto& binding : results) {
-                names.push_back(binding.get("X"));
-            }
-            EXPECT_THAT(names, ::testing::UnorderedElementsAre("john", "mary"));
-            queryCompleted = true;
-        })
-        .wait();
+    auto results = kb->query("person(?X)");
     
-    EXPECT_TRUE(queryCompleted);
+    ASSERT_EQ(results.size(), 3);
+    
+    std::vector<std::string> names;
+    for (const auto& binding : results) {
+        names.push_back(binding.get("X"));
+    }
+    EXPECT_THAT(names, ::testing::UnorderedElementsAre("john", "mary", "bob"));
 }
 
-TEST_F(KnowledgeBaseTest, RuleEvaluation) {
-    // Add facts and rule for testing
+TEST_F(KnowledgeBaseTest, QueryWithBoundArgument) {
+    kb->addFact(Fact("parent", {
+        Term{TermType::CONSTANT, "john"},
+        Term{TermType::CONSTANT, "bob"}
+    }));
+    kb->addFact(Fact("parent", {
+        Term{TermType::CONSTANT, "john"},
+        Term{TermType::CONSTANT, "mary"}
+    }));
+    kb->addFact(Fact("parent", {
+        Term{TermType::CONSTANT, "alice"},
+        Term{TermType::CONSTANT, "tom"}
+    }));
+    
+    // Query for children of john
+    auto results = kb->query("parent(john, ?Child)");
+    
+    ASSERT_EQ(results.size(), 2);
+    std::vector<std::string> children;
+    for (const auto& binding : results) {
+        children.push_back(binding.get("Child"));
+    }
+    EXPECT_THAT(children, ::testing::UnorderedElementsAre("bob", "mary"));
+}
+
+TEST_F(KnowledgeBaseTest, QueryNoResults) {
+    kb->addFact(Fact("person", {Term{TermType::CONSTANT, "john"}}));
+    
+    auto results = kb->query("animal(?X)");
+    
+    EXPECT_TRUE(results.empty());
+}
+
+// ============================================================================
+// Rule Evaluation Tests (Synchronous!)
+// ============================================================================
+
+TEST_F(KnowledgeBaseTest, SimpleRuleEvaluation) {
+    // Facts
     kb->addFact(Fact("parent", {
         Term{TermType::CONSTANT, "john"},
         Term{TermType::CONSTANT, "bob"}
@@ -115,135 +135,231 @@ TEST_F(KnowledgeBaseTest, RuleEvaluation) {
         Term{TermType::CONSTANT, "alice"}
     }));
     
-    writeTestData("grandparent(_X, _Z) :- parent(_X, _Y), parent(_Y, _Z).");
-    kb->loadFromFile(test_file.string());
+    // Rule: grandparent(X, Z) :- parent(X, Y), parent(Y, Z)
+    kb->addRule(Rule(
+        Fact("grandparent", {
+            Term{TermType::VARIABLE, "X"},
+            Term{TermType::VARIABLE, "Z"}
+        }),
+        {
+            Fact("parent", {
+                Term{TermType::VARIABLE, "X"},
+                Term{TermType::VARIABLE, "Y"}
+            }),
+            Fact("parent", {
+                Term{TermType::VARIABLE, "Y"},
+                Term{TermType::VARIABLE, "Z"}
+            })
+        }
+    ));
     
-    bool queryCompleted = false;
-    kb->query("grandparent(?X, ?Z)")
-        .thenValue([&](std::vector<BindingSet> results) {
-            ASSERT_EQ(results.size(), 1);
-            EXPECT_EQ(results[0].get("X"), "john");
-            EXPECT_EQ(results[0].get("Z"), "alice");
-            queryCompleted = true;
-        })
-        .wait();
+    auto results = kb->query("grandparent(?X, ?Z)");
     
-    EXPECT_TRUE(queryCompleted);
+    ASSERT_EQ(results.size(), 1);
+    EXPECT_EQ(results[0].get("X"), "john");
+    EXPECT_EQ(results[0].get("Z"), "alice");
 }
 
-TEST_F(KnowledgeBaseTest, ExternalStorageProvider) {
-    auto mockProvider = std::make_unique<MockStorageProvider>();
-    auto* mockProviderPtr = mockProvider.get();
+TEST_F(KnowledgeBaseTest, RuleWithMultipleMatches) {
+    // Facts: parent relationships
+    kb->addFact(Fact("parent", {
+        Term{TermType::CONSTANT, "tom"},
+        Term{TermType::CONSTANT, "john"}
+    }));
+    kb->addFact(Fact("parent", {
+        Term{TermType::CONSTANT, "tom"},
+        Term{TermType::CONSTANT, "mary"}
+    }));
     
-    // Set up mock expectations
-    EXPECT_CALL(*mockProviderPtr, canHandle(::testing::_))
-        .WillRepeatedly(::testing::Return(true));
+    // Rule: sibling(X, Y) :- parent(Z, X), parent(Z, Y)
+    kb->addRule(Rule(
+        Fact("sibling", {
+            Term{TermType::VARIABLE, "X"},
+            Term{TermType::VARIABLE, "Y"}
+        }),
+        {
+            Fact("parent", {
+                Term{TermType::VARIABLE, "Z"},
+                Term{TermType::VARIABLE, "X"}
+            }),
+            Fact("parent", {
+                Term{TermType::VARIABLE, "Z"},
+                Term{TermType::VARIABLE, "Y"}
+            })
+        }
+    ));
     
-    std::vector<Fact> mockFacts = {
-        Fact("external_data", {Term{TermType::CONSTANT, "value1"}}),
-        Fact("external_data", {Term{TermType::CONSTANT, "value2"}})
-    };
+    auto results = kb->query("sibling(?A, ?B)");
     
-    EXPECT_CALL(*mockProviderPtr, getFacts(::testing::_))
-        .WillRepeatedly(::testing::Invoke(
-            [mockFacts](const Fact&) -> folly::Future<std::vector<Fact>> {
-                return folly::makeFuture(mockFacts);
-            }));
-    
-    
-    kb->addExternalProvider(std::move(mockProvider));
-    
-    bool queryCompleted = false;
-    kb->query("external_data(?X)")
-        .thenValue([&](std::vector<BindingSet> results) {
-            EXPECT_EQ(results.size(), 2);
-            std::vector<std::string> values;
-            for (const auto& binding : results) {
-                values.push_back(binding.get("X"));
-            }
-            EXPECT_THAT(values, ::testing::UnorderedElementsAre("value1", "value2"));
-            queryCompleted = true;
-        })
-        .wait();
-    
-    EXPECT_TRUE(queryCompleted);
+    // Should get (john, john), (john, mary), (mary, john), (mary, mary)
+    EXPECT_GE(results.size(), 2);
 }
 
-TEST_F(KnowledgeBaseTest, UnificationTest) {
-    Fact goal("person", {Term{TermType::VARIABLE, "X"}});
-    Fact fact("person", {Term{TermType::CONSTANT, "john"}});
-    BindingSet bindings;
+// ============================================================================
+// File Loading Tests
+// ============================================================================
+
+TEST_F(KnowledgeBaseTest, LoadFactsFromFile) {
+    writeTestFile(R"(
+person(john).
+person(mary).
+age(john, 30).
+)");
     
-    auto result = kb->unifyFact(goal, fact, bindings);
+    kb->loadFromFile(testFile.string());
+    
+    auto personFacts = kb->getFacts("person");
+    EXPECT_EQ(personFacts.size(), 2);
+    
+    auto ageFacts = kb->getFacts("age");
+    EXPECT_EQ(ageFacts.size(), 1);
+}
+
+TEST_F(KnowledgeBaseTest, LoadRulesFromFile) {
+    writeTestFile(R"(
+parent(john, bob).
+parent(bob, alice).
+
+grandparent(X, Z) :- parent(X, Y), parent(Y, Z).
+)");
+    
+    kb->loadFromFile(testFile.string());
+    
+    auto results = kb->query("grandparent(?X, ?Z)");
+    
+    ASSERT_EQ(results.size(), 1);
+    EXPECT_EQ(results[0].get("X"), "john");
+    EXPECT_EQ(results[0].get("Z"), "alice");
+}
+
+TEST_F(KnowledgeBaseTest, LoadWithComments) {
+    writeTestFile(R"(
+% This is a comment
+person(john).
+% Another comment
+person(mary).
+)");
+    
+    kb->loadFromFile(testFile.string());
+    
+    auto facts = kb->getFacts("person");
+    EXPECT_EQ(facts.size(), 2);
+}
+
+// ============================================================================
+// Unification Tests
+// ============================================================================
+
+TEST_F(KnowledgeBaseTest, UnificationBasic) {
+    Fact goal("parent", {
+        Term{TermType::VARIABLE, "X"},
+        Term{TermType::CONSTANT, "mary"}
+    });
+    Fact fact("parent", {
+        Term{TermType::CONSTANT, "john"},
+        Term{TermType::CONSTANT, "mary"}
+    });
+    
+    auto result = Unifier::unify(goal, fact, BindingSet{});
+    
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(result->get("X"), "john");
 }
 
-TEST_F(KnowledgeBaseTest, ComplexRuleEvaluation) {
-    // Setup a more complex rule with multiple body goals
-    writeTestData(R"(
-        % Facts
-        male(john).
-        age(john, 25).
-        has_license(john).
-        
-        % Rule
-        can_drive(Person) :- male(Person), age(Person, Age), has_license(Person).
-    )");
+TEST_F(KnowledgeBaseTest, UnificationFails) {
+    Fact goal("parent", {
+        Term{TermType::CONSTANT, "john"},
+        Term{TermType::CONSTANT, "mary"}
+    });
+    Fact fact("parent", {
+        Term{TermType::CONSTANT, "alice"},
+        Term{TermType::CONSTANT, "mary"}
+    });
     
-    kb = std::make_unique<KnowledgeBase>(test_file.string());
+    auto result = Unifier::unify(goal, fact, BindingSet{});
     
-    bool queryCompleted = false;
-    kb->query("can_drive(?X)")
-        .thenValue([&](std::vector<BindingSet> results) {
-            EXPECT_EQ(results.size(), 1);
-            EXPECT_EQ(results[0].get("X"), "john");
-            queryCompleted = true;
-        })
-        .wait();
-    
-    EXPECT_TRUE(queryCompleted);
+    EXPECT_FALSE(result.has_value());
 }
 
-TEST_F(KnowledgeBaseTest, InvalidQueries) {
-    bool errorCaught = false;
-    kb->query("invalid_predicate(")
-        .thenError<std::exception>([&](const std::exception& e) {
-            errorCaught = true;
-            return folly::makeFuture<std::vector<BindingSet>>(std::vector<BindingSet>{});
-        })
-        .wait();
+TEST_F(KnowledgeBaseTest, UnificationWithExistingBindings) {
+    BindingSet existing;
+    existing.add("X", "john");
     
-    EXPECT_TRUE(errorCaught);
+    Fact goal("parent", {
+        Term{TermType::VARIABLE, "X"},
+        Term{TermType::VARIABLE, "Y"}
+    });
+    Fact fact("parent", {
+        Term{TermType::CONSTANT, "john"},
+        Term{TermType::CONSTANT, "mary"}
+    });
+    
+    auto result = Unifier::unify(goal, fact, existing);
+    
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->get("X"), "john");
+    EXPECT_EQ(result->get("Y"), "mary");
 }
 
-TEST_F(KnowledgeBaseTest, LoadFromFile) {
-    writeTestData(R"(
-        person(john).
-        person(mary).
-        age(john, 30).
-        parent(john, bob).
-        parent(mary, alice).
-        
-        sibling(?X, ?Y) :- parent(?Z, ?X), parent(?Z, ?Y).
-    )");
+TEST_F(KnowledgeBaseTest, UnificationConflictingBindings) {
+    BindingSet existing;
+    existing.add("X", "alice");  // X is already bound to alice
     
-    kb = std::make_unique<KnowledgeBase>(test_file.string());
+    Fact goal("parent", {
+        Term{TermType::VARIABLE, "X"},
+        Term{TermType::CONSTANT, "mary"}
+    });
+    Fact fact("parent", {
+        Term{TermType::CONSTANT, "john"},  // But fact has john
+        Term{TermType::CONSTANT, "mary"}
+    });
     
-    // Test loaded facts
-    auto personFacts = kb->getMemoryFacts("person");
-    EXPECT_EQ(personFacts.size(), 2);
+    auto result = Unifier::unify(goal, fact, existing);
     
-    // Test rule evaluation
-    bool queryCompleted = false;
-    kb->query("sibling(?X, ?Y)")
-        .thenValue([&](std::vector<BindingSet> results) {
-            EXPECT_GT(results.size(), 0);
-            queryCompleted = true;
-        })
-        .wait();
+    EXPECT_FALSE(result.has_value());  // Should fail
+}
+
+// ============================================================================
+// Complex Rule Tests
+// ============================================================================
+
+TEST_F(KnowledgeBaseTest, TransitiveRule) {
+    // ancestor(X, Y) :- parent(X, Y).
+    // ancestor(X, Z) :- parent(X, Y), ancestor(Y, Z).
     
-    EXPECT_TRUE(queryCompleted);
+    writeTestFile(R"(
+parent(a, b).
+parent(b, c).
+parent(c, d).
+
+ancestor(X, Y) :- parent(X, Y).
+ancestor(X, Z) :- parent(X, Y), ancestor(Y, Z).
+)");
+    
+    kb->loadFromFile(testFile.string());
+    
+    // Query: who is ancestor of d?
+    auto results = kb->query("ancestor(?X, d)");
+    
+    // Should find a, b, c as ancestors of d
+    std::vector<std::string> ancestors;
+    for (const auto& binding : results) {
+        ancestors.push_back(binding.get("X"));
+    }
+    
+    EXPECT_THAT(ancestors, ::testing::UnorderedElementsAre("a", "b", "c"));
+}
+
+// ============================================================================
+// Error Handling Tests
+// ============================================================================
+
+TEST_F(KnowledgeBaseTest, InvalidQuerySyntax) {
+    EXPECT_THROW(kb->query("invalid("), std::runtime_error);
+}
+
+TEST_F(KnowledgeBaseTest, NonexistentFile) {
+    EXPECT_THROW(kb->loadFromFile("nonexistent.pl"), std::runtime_error);
 }
 
 } // namespace

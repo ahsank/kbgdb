@@ -5,5 +5,4 @@ add_library(kbgdb_common
 target_link_libraries(kbgdb_common
     PUBLIC
         kbgdb_includes
-        folly::folly
 )

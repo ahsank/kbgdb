@@ -1,15 +1,14 @@
-// src/query/query_parser.cpp
 #include "query/query_parser.h"
 #include <sstream>
 #include <stdexcept>
-#include <iostream>
+#include <cctype>
 
 namespace kbgdb {
+
 Fact QueryParser::parse(const std::string& input) {
     tokens_ = tokenize(input);
     current_ = 0;
 
-    // Validate basic structure
     if (tokens_.empty()) {
         throw std::runtime_error("Empty query");
     }
@@ -84,34 +83,31 @@ std::vector<QueryParser::Token> QueryParser::tokenize(const std::string& input) 
     if (!current.empty()) {
         addToken(tokens, current);
     }
-
-    // Debug output
-    std::cout << "Tokenized: ";
-    for (const auto& token : tokens) {
-        std::cout << "(" << token.type << ":" << token.value << ") ";
-    }
-    std::cout << std::endl;
     
     return tokens;
 }
 
 void QueryParser::addToken(std::vector<Token>& tokens, const std::string& value) {
     Token token;
-    if (!isRuleMode_ && value[0] == '?') {
-        // Query mode: variables start with ?
+    
+    if (!ruleMode_ && !value.empty() && value[0] == '?') {
+        // Query mode: variables start with '?'
+        // Strip the '?' prefix for internal storage
         token.type = Token::VARIABLE;
         token.value = value.substr(1);
-    } else if (isRuleMode_ && (std::isupper(value[0]) || value[0] == '_')) {
+    } else if (ruleMode_ && !value.empty() && 
+               (std::isupper(value[0]) || value[0] == '_')) {
         // Rule mode: variables are uppercase or start with underscore
         token.type = Token::VARIABLE;
         token.value = value;
-    } else if (std::isdigit(value[0])) {
+    } else if (!value.empty() && std::isdigit(value[0])) {
         token.type = Token::NUMBER;
         token.value = value;
     } else {
         token.type = Token::IDENTIFIER;
         token.value = value;
     }
+    
     tokens.push_back(token);
 }
 

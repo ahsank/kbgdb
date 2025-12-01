@@ -30,10 +30,10 @@ protected:
 TEST_F(RuleTest, Construction) {
     Rule rule(createHead(), createBody());
 
-    EXPECT_EQ(rule.head_.predicate_, "grandparent");
-    ASSERT_EQ(rule.body_.size(), 2);
-    EXPECT_EQ(rule.body_[0].predicate_, "parent");
-    EXPECT_EQ(rule.body_[1].predicate_, "parent");
+    EXPECT_EQ(rule.head().predicate(), "grandparent");
+    ASSERT_EQ(rule.body().size(), 2);
+    EXPECT_EQ(rule.body()[0].predicate(), "parent");
+    EXPECT_EQ(rule.body()[1].predicate(), "parent");
 }
 
 TEST_F(RuleTest, ToString) {
@@ -58,7 +58,7 @@ TEST_F(RuleTest, IsValid) {
 }
 
 TEST_F(RuleTest, ComplexRule) {
-    // Testing a more complex rule with multiple body goals and mixed terms
+    // Rule with mixed constants and variables
     Fact head("can_drive", {
         Term{TermType::VARIABLE, "Person"},
         Term{TermType::CONSTANT, "car"}
@@ -78,5 +78,6 @@ TEST_F(RuleTest, ComplexRule) {
     EXPECT_EQ(rule.toString(), 
         "can_drive(?Person, car) :- person(?Person), age(?Person, ?Age), has_license(?Person).");
 }
+
 } // namespace
 } // namespace kbgdb

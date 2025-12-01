@@ -1,41 +1,37 @@
 #pragma once
 #include "core/knowledge_base.h"
-#include <folly/futures/Future.h>
 #include <memory>
+#include <string>
 
 namespace kbgdb {
 
+/**
+ * QueryResult encapsulates the result of a query execution.
+ */
 struct QueryResult {
-    bool success;
+    bool success = false;
     std::vector<BindingSet> bindings;
     std::string error;
     
     std::string toJSON() const;
 };
 
+/**
+ * QueryEngine provides a simple interface for executing queries.
+ * This is a synchronous implementation.
+ */
 class QueryEngine {
 public:
     explicit QueryEngine(std::shared_ptr<KnowledgeBase> kb);
     
-    folly::Future<QueryResult> executeQuery(const std::string& query_str);
-
+    /**
+     * Execute a query and return results.
+     * Query format: "predicate(?Var1, constant, ?Var2)"
+     */
+    QueryResult execute(const std::string& queryStr);
+    
 private:
     std::shared_ptr<KnowledgeBase> kb_;
-    
-    folly::Future<std::vector<BindingSet>> proveGoal(
-        const Fact& goal,
-        const BindingSet& bindings
-    );
-    
-    std::optional<BindingSet> unify(
-        const Fact& goal,
-        const Fact& fact,
-        const BindingSet& bindings
-    );
-    
-    static std::vector<BindingSet> combineBindings(
-        const std::vector<std::vector<BindingSet>>& allBindings
-    );
 };
 
 } // namespace kbgdb

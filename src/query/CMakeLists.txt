@@ -7,6 +7,4 @@ target_link_libraries(kbgdb_query
     PUBLIC
         kbgdb_includes
         kbgdb_common
-        kbgdb_core
-        folly::folly
 )

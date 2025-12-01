@@ -27,25 +27,21 @@ TEST(TermTest, IsVariable) {
     EXPECT_FALSE(constant.isVariable());
 }
 
-class FactTest : public ::testing::Test {
-protected:
-    Fact createSampleFact() {
-        return Fact("parent", {
-            Term{TermType::CONSTANT, "john"},
-            Term{TermType::CONSTANT, "mary"}
-        });
-    }
-};
-
-TEST_F(FactTest, ConstructAndGetPredicate) {
-    auto fact = createSampleFact();
-    EXPECT_EQ(fact.predicate_, "parent");
+TEST(FactTest, ConstructAndGetPredicate) {
+    Fact fact("parent", {
+        Term{TermType::CONSTANT, "john"},
+        Term{TermType::CONSTANT, "mary"}
+    });
+    EXPECT_EQ(fact.predicate(), "parent");
 }
 
-TEST_F(FactTest, GetTerms) {
-    auto fact = createSampleFact();
-    const auto& terms = fact.terms_;
-
+TEST(FactTest, GetTerms) {
+    Fact fact("parent", {
+        Term{TermType::CONSTANT, "john"},
+        Term{TermType::CONSTANT, "mary"}
+    });
+    
+    const auto& terms = fact.terms();
     ASSERT_EQ(terms.size(), 2);
     EXPECT_EQ(terms[0].type, TermType::CONSTANT);
     EXPECT_EQ(terms[0].value, "john");
@@ -53,35 +49,46 @@ TEST_F(FactTest, GetTerms) {
     EXPECT_EQ(terms[1].value, "mary");
 }
 
-TEST_F(FactTest, ToString) {
-    auto fact = createSampleFact();
+TEST(FactTest, ToString) {
+    Fact fact("parent", {
+        Term{TermType::CONSTANT, "john"},
+        Term{TermType::CONSTANT, "mary"}
+    });
     EXPECT_EQ(fact.toString(), "parent(john, mary)");
 }
 
-TEST_F(FactTest, FactSource) {
-    auto fact = createSampleFact();
-    EXPECT_EQ(fact.source_, FactSource::MEMORY);
-
-    fact.source_ = FactSource::ROCKSDB;
-    EXPECT_EQ(fact.source_, FactSource::ROCKSDB);
-}
-
-TEST_F(FactTest, FactWithVariables) {
+TEST(FactTest, FactWithVariables) {
     Fact fact("parent", {
         Term{TermType::VARIABLE, "X"},
         Term{TermType::CONSTANT, "mary"}
     });
-    
     EXPECT_EQ(fact.toString(), "parent(?X, mary)");
 }
 
-TEST_F(FactTest, FactWithMixedTerms) {
-    Fact fact("age", {
-        Term{TermType::CONSTANT, "john"},
-        Term{TermType::NUMBER, "42"}
-    });
+TEST(BindingSetTest, AddAndGet) {
+    BindingSet bindings;
+    bindings.add("X", "john");
+    bindings.add("Y", "mary");
     
-    EXPECT_EQ(fact.toString(), "age(john, 42)");
+    EXPECT_EQ(bindings.get("X"), "john");
+    EXPECT_EQ(bindings.get("Y"), "mary");
+    EXPECT_EQ(bindings.get("Z"), "");  // Not found
+}
+
+TEST(BindingSetTest, Has) {
+    BindingSet bindings;
+    bindings.add("X", "john");
+    
+    EXPECT_TRUE(bindings.has("X"));
+    EXPECT_FALSE(bindings.has("Y"));
+}
+
+TEST(BindingSetTest, ToString) {
+    BindingSet bindings;
+    bindings.add("X", "john");
+    
+    std::string str = bindings.toString();
+    EXPECT_TRUE(str.find("X=john") != std::string::npos);
 }
 
 } // namespace

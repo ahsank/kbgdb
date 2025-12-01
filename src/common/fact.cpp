@@ -26,4 +26,17 @@ std::string Fact::toString() const {
     return oss.str();
 }
 
+std::string BindingSet::toString() const {
+    std::ostringstream oss;
+    oss << "{";
+    bool first = true;
+    for (const auto& [var, val] : bindings) {
+        if (!first) oss << ", ";
+        oss << var << "=" << val;
+        first = false;
+    }
+    oss << "}";
+    return oss.str();
+}
+
 } // namespace kbgdb
