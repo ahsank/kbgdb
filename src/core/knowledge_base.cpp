@@ -5,32 +5,232 @@
 #include <iostream>
 #include <algorithm>
 #include <cctype>
+#include <set>
+#include <functional>
 
 namespace kbgdb {
 
 // ============================================================================
-// Unifier implementation
+// Unifier implementation - supports compound terms and lists
+// Following Norvig's PAIP approach
+// ============================================================================
+
+// Forward declarations
+static std::optional<BindingSet> unifyImpl(
+    const Term& x, const Term& y, BindingSet bindings);
+static std::optional<BindingSet> unifyVariable(
+    const Term& var, const Term& x, BindingSet bindings);
+static bool occursCheck(
+    const std::string& var, const Term& x, const BindingSet& bindings);
+static Term resolveTerm(const Term& term, const BindingSet& bindings);
+
+/**
+ * Check if a string looks like a variable name
+ */
+static bool isVariableName(const std::string& s) {
+    if (s.empty()) return false;
+    return std::isupper(s[0]) || s[0] == '_';
+}
+
+/**
+ * Fully resolve a term, following variable bindings recursively.
+ * Returns a term with all bound variables replaced by their values.
+ */
+static Term resolveTerm(const Term& term, const BindingSet& bindings) {
+    switch (term.type) {
+        case TermType::VARIABLE: {
+            auto bound = bindings.getTerm(term.value);
+            if (bound) {
+                // Recursively resolve the bound term
+                return resolveTerm(*bound, bindings);
+            }
+            return term;  // Unbound variable
+        }
+        
+        case TermType::CONSTANT:
+        case TermType::NUMBER:
+            return term;
+        
+        case TermType::COMPOUND: {
+            std::vector<Term> resolvedArgs;
+            for (const auto& arg : term.args) {
+                resolvedArgs.push_back(resolveTerm(arg, bindings));
+            }
+            return Term::compound(term.functor, std::move(resolvedArgs));
+        }
+        
+        case TermType::LIST: {
+            if (term.isEmptyList()) {
+                return term;
+            }
+            // Cons cell
+            Term head = resolveTerm(term.head(), bindings);
+            Term tail = resolveTerm(term.tail(), bindings);
+            return Term::cons(std::move(head), std::move(tail));
+        }
+    }
+    return term;
+}
+
+/**
+ * Occurs check: Does var occur anywhere inside x?
+ * Prevents infinite structures like X = f(X)
+ */
+static bool occursCheck(
+    const std::string& var, const Term& x, const BindingSet& bindings) {
+    
+    switch (x.type) {
+        case TermType::VARIABLE: {
+            if (x.value == var) return true;
+            
+            // If x is bound, check what it's bound to
+            auto bound = bindings.getTerm(x.value);
+            if (bound) {
+                return occursCheck(var, *bound, bindings);
+            }
+            return false;
+        }
+        
+        case TermType::CONSTANT:
+        case TermType::NUMBER:
+            return false;
+        
+        case TermType::COMPOUND:
+        case TermType::LIST: {
+            for (const auto& arg : x.args) {
+                if (occursCheck(var, arg, bindings)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+    return false;
+}
+
+/**
+ * Unify a variable with a term x.
+ * Following Norvig's unify-variable from PAIP.
+ */
+static std::optional<BindingSet> unifyVariable(
+    const Term& var, const Term& x, BindingSet bindings) {
+    
+    // If var is already bound, unify its value with x
+    auto varBinding = bindings.getTerm(var.value);
+    if (varBinding) {
+        return unifyImpl(*varBinding, x, bindings);
+    }
+    
+    // If x is a variable that's bound, unify var with x's value
+    if (x.isVariable()) {
+        auto xBinding = bindings.getTerm(x.value);
+        if (xBinding) {
+            return unifyImpl(var, *xBinding, bindings);
+        }
+    }
+    
+    // Occurs check: prevent X = f(X) style infinite structures
+    if (occursCheck(var.value, x, bindings)) {
+        return std::nullopt;
+    }
+    
+    // Extend bindings: bind var to x
+    bindings.add(var.value, x);
+    return bindings;
+}
+
+/**
+ * Core unification: See if x and y match with given bindings.
+ * Following Norvig's unify from PAIP.
+ */
+static std::optional<BindingSet> unifyImpl(
+    const Term& x, const Term& y, BindingSet bindings) {
+    
+    // If x and y are identical atoms/numbers/empty lists
+    if (x.type == y.type) {
+        if ((x.isConstant() || x.isNumber()) && x.value == y.value) {
+            return bindings;
+        }
+        if (x.isVariable() && x.value == y.value) {
+            return bindings;
+        }
+        if (x.isEmptyList() && y.isEmptyList()) {
+            return bindings;
+        }
+    }
+    
+    // If x is a variable, use unify-variable
+    if (x.isVariable()) {
+        return unifyVariable(x, y, bindings);
+    }
+    
+    // If y is a variable, use unify-variable (symmetric)
+    if (y.isVariable()) {
+        return unifyVariable(y, x, bindings);
+    }
+    
+    // Both are compound terms
+    if (x.isCompound() && y.isCompound()) {
+        if (x.functor != y.functor || x.args.size() != y.args.size()) {
+            return std::nullopt;
+        }
+        for (size_t i = 0; i < x.args.size(); ++i) {
+            auto result = unifyImpl(x.args[i], y.args[i], bindings);
+            if (!result) return std::nullopt;
+            bindings = *result;
+        }
+        return bindings;
+    }
+    
+    // Both are lists (cons cells)
+    if (x.isList() && y.isList()) {
+        // Both empty - already handled above
+        if (x.isEmptyList() || y.isEmptyList()) {
+            // One empty, one not - fail
+            return std::nullopt;
+        }
+        // Both are cons cells - unify head and tail
+        auto headResult = unifyImpl(x.head(), y.head(), bindings);
+        if (!headResult) return std::nullopt;
+        return unifyImpl(x.tail(), y.tail(), *headResult);
+    }
+    
+    // Type mismatch - fail
+    return std::nullopt;
+}
+
+// ============================================================================
+// Unifier public interface
 // ============================================================================
 
 std::string Unifier::resolve(const Term& term, const BindingSet& bindings) {
-    if (!term.isVariable()) {
-        return term.value;
+    Term resolved = resolveTerm(term, bindings);
+    if (resolved.isConstant() || resolved.isNumber()) {
+        return resolved.value;
     }
-    
-    std::string value = term.value;
-    std::string resolved = bindings.get(value);
-    
-    // Follow the chain of bindings
-    while (!resolved.empty()) {
-        // Check if resolved value is itself a variable that's bound
-        auto next = bindings.get(resolved);
-        if (next.empty() || next == resolved) {
-            break;
-        }
-        resolved = next;
+    if (resolved.isVariable()) {
+        return resolved.value;
     }
+    // For compound/list, return toString representation
+    return resolved.toString();
+}
+
+std::pair<std::string, bool> Unifier::resolveWithType(
+    const Term& term, const BindingSet& bindings) {
     
-    return resolved.empty() ? value : resolved;
+    Term resolved = resolveTerm(term, bindings);
+    if (resolved.isVariable()) {
+        return {resolved.value, true};
+    }
+    if (resolved.isConstant() || resolved.isNumber()) {
+        return {resolved.value, false};
+    }
+    // Compound/list - return toString, not a variable
+    return {resolved.toString(), false};
+}
+
+Term Unifier::resolveFull(const Term& term, const BindingSet& bindings) {
+    return resolveTerm(term, bindings);
 }
 
 std::optional<BindingSet> Unifier::unifyTerms(
@@ -43,35 +243,9 @@ std::optional<BindingSet> Unifier::unifyTerms(
     }
 
     for (size_t i = 0; i < terms1.size(); ++i) {
-        const auto& t1 = terms1[i];
-        const auto& t2 = terms2[i];
-        
-        // Resolve both terms
-        std::string val1 = resolve(t1, bindings);
-        std::string val2 = resolve(t2, bindings);
-        
-        bool t1IsVar = t1.isVariable() && bindings.get(t1.value).empty();
-        bool t2IsVar = t2.isVariable() && bindings.get(t2.value).empty();
-        
-        // Check if val1 is still a variable (unbound)
-        bool val1IsVar = t1.isVariable() && (val1 == t1.value);
-        bool val2IsVar = t2.isVariable() && (val2 == t2.value);
-        
-        if (val1IsVar && val2IsVar) {
-            // Both are unbound variables - bind them together
-            if (val1 != val2) {
-                bindings.add(val1, val2);
-            }
-        } else if (val1IsVar) {
-            // t1 is unbound variable, bind it to val2
-            bindings.add(val1, val2);
-        } else if (val2IsVar) {
-            // t2 is unbound variable, bind it to val1
-            bindings.add(val2, val1);
-        } else if (val1 != val2) {
-            // Both are ground terms and they don't match
-            return std::nullopt;
-        }
+        auto result = unifyImpl(terms1[i], terms2[i], bindings);
+        if (!result) return std::nullopt;
+        bindings = *result;
     }
     
     return bindings;
@@ -89,20 +263,14 @@ std::optional<BindingSet> Unifier::unify(
     return unifyTerms(goal.terms(), fact.terms(), bindings);
 }
 
+Term Unifier::substituteTerm(const Term& term, const BindingSet& bindings) {
+    return resolveTerm(term, bindings);
+}
+
 Fact Unifier::substitute(const Fact& fact, const BindingSet& bindings) {
     std::vector<Term> newTerms;
     for (const auto& term : fact.terms()) {
-        if (term.isVariable()) {
-            std::string resolved = resolve(term, bindings);
-            if (resolved != term.value) {
-                // Variable is bound to a value
-                newTerms.push_back(Term{TermType::CONSTANT, resolved});
-            } else {
-                newTerms.push_back(term);
-            }
-        } else {
-            newTerms.push_back(term);
-        }
+        newTerms.push_back(resolveTerm(term, bindings));
     }
     return Fact(fact.predicate(), newTerms);
 }
@@ -201,10 +369,11 @@ void KnowledgeBase::loadFromFile(const std::string& filename) {
                 
                 Fact head = parser.parse(headStr);
                 
-                // Parse body goals (comma-separated, respecting parentheses)
+                // Parse body goals (comma-separated, respecting parentheses and brackets)
                 std::vector<Fact> body;
                 std::string current;
                 int parenDepth = 0;
+                int bracketDepth = 0;
                 
                 for (size_t i = 0; i < bodyStr.length(); ++i) {
                     char c = bodyStr[i];
@@ -214,7 +383,13 @@ void KnowledgeBase::loadFromFile(const std::string& filename) {
                     } else if (c == ')') {
                         parenDepth--;
                         current += c;
-                    } else if (c == ',' && parenDepth == 0) {
+                    } else if (c == '[') {
+                        bracketDepth++;
+                        current += c;
+                    } else if (c == ']') {
+                        bracketDepth--;
+                        current += c;
+                    } else if (c == ',' && parenDepth == 0 && bracketDepth == 0) {
                         // End of a goal
                         trim(current);
                         if (!current.empty()) {
@@ -258,12 +433,27 @@ std::vector<BindingSet> KnowledgeBase::query(const Fact& goal) {
     std::set<std::string> visited;
     auto results = evaluateGoal(goal, BindingSet{}, visited);
     
-    // Extract and resolve only the original query variables
+    // Collect all query variables (including those inside compound terms/lists)
     std::vector<std::string> queryVars;
-    for (const auto& term : goal.terms()) {
-        if (term.isVariable()) {
-            queryVars.push_back(term.value);
+    std::function<void(const Term&)> collectVars;
+    collectVars = [&](const Term& term) {
+        switch (term.type) {
+            case TermType::VARIABLE:
+                queryVars.push_back(term.value);
+                break;
+            case TermType::COMPOUND:
+            case TermType::LIST:
+                for (const auto& arg : term.args) {
+                    collectVars(arg);
+                }
+                break;
+            default:
+                break;
         }
+    };
+    
+    for (const auto& term : goal.terms()) {
+        collectVars(term);
     }
     
     // Resolve each result to get final values
@@ -271,25 +461,16 @@ std::vector<BindingSet> KnowledgeBase::query(const Fact& goal) {
     for (const auto& binding : results) {
         BindingSet finalBinding;
         for (const auto& var : queryVars) {
-            // Follow the chain of bindings to get the final value
-            std::string value = var;
-            std::set<std::string> seen;
-            while (true) {
-                if (seen.count(value)) break;  // Cycle detection
-                seen.insert(value);
-                
-                std::string next = binding.get(value);
-                if (next.empty()) break;
-                value = next;
-            }
-            // Only add if we found a concrete value (not still a variable)
-            // A variable is uppercase or starts with _
-            if (!value.empty() && !(std::isupper(value[0]) || value[0] == '_')) {
-                finalBinding.add(var, value);
-            } else if (!value.empty() && value != var) {
-                // It's still a variable, but might be bound in a more complex way
-                // Try to get any value
-                finalBinding.add(var, value);
+            // Use the new resolveFull to get the complete resolved term
+            Term varTerm = Term::variable(var);
+            Term resolvedTerm = Unifier::resolveFull(varTerm, binding);
+            
+            // Only add if we found a non-variable value
+            if (!resolvedTerm.isVariable()) {
+                finalBinding.add(var, resolvedTerm);
+            } else if (resolvedTerm.value != var) {
+                // Bound to another variable
+                finalBinding.add(var, resolvedTerm);
             }
         }
         if (!finalBinding.bindings.empty() || queryVars.empty()) {
@@ -313,14 +494,43 @@ Rule KnowledgeBase::renameVariables(const Rule& rule, int& counter) const {
         return newName;
     };
     
+    // Forward declaration for recursion
+    std::function<Term(const Term&)> renameTerm;
+    
+    renameTerm = [&](const Term& term) -> Term {
+        switch (term.type) {
+            case TermType::VARIABLE:
+                return Term::variable(renameVar(term.value));
+                
+            case TermType::CONSTANT:
+            case TermType::NUMBER:
+                return term;
+                
+            case TermType::COMPOUND: {
+                std::vector<Term> newArgs;
+                for (const auto& arg : term.args) {
+                    newArgs.push_back(renameTerm(arg));
+                }
+                return Term::compound(term.functor, std::move(newArgs));
+            }
+            
+            case TermType::LIST: {
+                if (term.isEmptyList()) {
+                    return term;
+                }
+                return Term::cons(
+                    renameTerm(term.head()),
+                    renameTerm(term.tail())
+                );
+            }
+        }
+        return term;
+    };
+    
     auto renameFact = [&](const Fact& f) -> Fact {
         std::vector<Term> newTerms;
         for (const auto& term : f.terms()) {
-            if (term.isVariable()) {
-                newTerms.push_back(Term{TermType::VARIABLE, renameVar(term.value)});
-            } else {
-                newTerms.push_back(term);
-            }
+            newTerms.push_back(renameTerm(term));
         }
         return Fact(f.predicate(), newTerms);
     };

@@ -27,7 +27,7 @@ Fact QueryParser::parse(const std::string& input) {
     // Parse terms
     std::vector<Term> terms;
     while (!isAtEnd() && !check(Token::RPAREN)) {
-        terms.push_back(parseTerm());
+        terms.push_back(parseTermInternal());
         
         if (!isAtEnd() && !check(Token::RPAREN)) {
             if (!match(Token::COMMA)) {
@@ -41,11 +41,18 @@ Fact QueryParser::parse(const std::string& input) {
         throw std::runtime_error("Expected ')' after terms");
     }
 
-    if (!isAtEnd()) {
-        throw std::runtime_error("Unexpected tokens after ')'");
-    }
-
     return Fact(predicate, terms);
+}
+
+Term QueryParser::parseTerm(const std::string& input) {
+    tokens_ = tokenize(input);
+    current_ = 0;
+    
+    if (tokens_.empty()) {
+        throw std::runtime_error("Empty term");
+    }
+    
+    return parseTermInternal();
 }
 
 std::vector<QueryParser::Token> QueryParser::tokenize(const std::string& input) {
@@ -63,16 +70,21 @@ std::vector<QueryParser::Token> QueryParser::tokenize(const std::string& input) 
             continue;
         }
         
-        // Handle parentheses and commas
-        if (c == '(' || c == ')' || c == ',') {
+        // Handle special characters
+        if (c == '(' || c == ')' || c == ',' || c == '[' || c == ']' || c == '|') {
             if (!current.empty()) {
                 addToken(tokens, current);
                 current.clear();
             }
             Token token;
-            token.type = c == '(' ? Token::LPAREN :
-                        c == ')' ? Token::RPAREN : 
-                        Token::COMMA;
+            switch (c) {
+                case '(': token.type = Token::LPAREN; break;
+                case ')': token.type = Token::RPAREN; break;
+                case ',': token.type = Token::COMMA; break;
+                case '[': token.type = Token::LBRACKET; break;
+                case ']': token.type = Token::RBRACKET; break;
+                case '|': token.type = Token::PIPE; break;
+            }
             tokens.push_back(token);
             continue;
         }
@@ -92,15 +104,15 @@ void QueryParser::addToken(std::vector<Token>& tokens, const std::string& value)
     
     if (!ruleMode_ && !value.empty() && value[0] == '?') {
         // Query mode: variables start with '?'
-        // Strip the '?' prefix for internal storage
         token.type = Token::VARIABLE;
-        token.value = value.substr(1);
+        token.value = value.substr(1);  // Strip '?'
     } else if (ruleMode_ && !value.empty() && 
                (std::isupper(value[0]) || value[0] == '_')) {
         // Rule mode: variables are uppercase or start with underscore
         token.type = Token::VARIABLE;
         token.value = value;
-    } else if (!value.empty() && std::isdigit(value[0])) {
+    } else if (!value.empty() && (std::isdigit(value[0]) || 
+               (value[0] == '-' && value.length() > 1 && std::isdigit(value[1])))) {
         token.type = Token::NUMBER;
         token.value = value;
     } else {
@@ -111,32 +123,87 @@ void QueryParser::addToken(std::vector<Token>& tokens, const std::string& value)
     tokens.push_back(token);
 }
 
-Term QueryParser::parseTerm() {
+Term QueryParser::parseTermInternal() {
     if (isAtEnd()) {
         throw std::runtime_error("Unexpected end of input while parsing term");
     }
     
+    // Check for list
+    if (check(Token::LBRACKET)) {
+        return parseList();
+    }
+    
+    return parseCompoundOrAtom();
+}
+
+Term QueryParser::parseList() {
+    consume(Token::LBRACKET);
+    
+    // Empty list
+    if (match(Token::RBRACKET)) {
+        return Term::emptyList();
+    }
+    
+    // Parse list elements
+    std::vector<Term> elements;
+    elements.push_back(parseTermInternal());
+    
+    while (match(Token::COMMA)) {
+        elements.push_back(parseTermInternal());
+    }
+    
+    // Check for tail: [a, b | Tail]
+    if (match(Token::PIPE)) {
+        Term tail = parseTermInternal();
+        consume(Token::RBRACKET);
+        
+        // Build list from back: elements... | tail
+        Term result = tail;
+        for (auto it = elements.rbegin(); it != elements.rend(); ++it) {
+            result = Term::cons(*it, std::move(result));
+        }
+        return result;
+    }
+    
+    consume(Token::RBRACKET);
+    
+    // Build proper list ending with []
+    return Term::list(std::move(elements));
+}
+
+Term QueryParser::parseCompoundOrAtom() {
     Token token = advance();
-    Term term;
     
     switch (token.type) {
         case Token::VARIABLE:
-            term.type = TermType::VARIABLE;
-            term.value = token.value;
-            break;
+            return Term::variable(token.value);
+            
         case Token::NUMBER:
-            term.type = TermType::NUMBER;
-            term.value = token.value;
-            break;
-        case Token::IDENTIFIER:
-            term.type = TermType::CONSTANT;
-            term.value = token.value;
-            break;
+            return Term::number(token.value);
+            
+        case Token::IDENTIFIER: {
+            // Check if it's a compound term: functor(args...)
+            if (match(Token::LPAREN)) {
+                std::vector<Term> args;
+                
+                if (!check(Token::RPAREN)) {
+                    args.push_back(parseTermInternal());
+                    while (match(Token::COMMA)) {
+                        args.push_back(parseTermInternal());
+                    }
+                }
+                
+                consume(Token::RPAREN);
+                return Term::compound(token.value, std::move(args));
+            }
+            
+            // Simple atom
+            return Term::constant(token.value);
+        }
+            
         default:
             throw std::runtime_error("Unexpected token type in term");
     }
-    
-    return term;
 }
 
 QueryParser::Token QueryParser::consume(Token::Type expected) {
@@ -165,6 +232,9 @@ bool QueryParser::match(Token::Type type) {
 }
 
 QueryParser::Token QueryParser::peek() const {
+    if (isAtEnd()) {
+        return Token{Token::END, ""};
+    }
     return tokens_[current_];
 }
 

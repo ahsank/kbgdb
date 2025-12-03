@@ -20,7 +20,7 @@ std::string QueryResult::toJSON() const {
         bool first = true;
         for (const auto& [var, value] : bindings[i].bindings) {
             if (!first) oss << ", ";
-            oss << R"(")" << var << R"(": ")" << value << R"(")";
+            oss << R"(")" << var << R"(": ")" << value.toString() << R"(")";
             first = false;
         }
         

@@ -7,6 +7,7 @@
 #include <vector>
 #include <optional>
 #include <set>
+#include <utility>
 
 namespace kbgdb {
 
@@ -32,11 +33,32 @@ public:
     static Fact substitute(const Fact& fact, const BindingSet& bindings);
     
     /**
-     * Get the value of a term, following variable bindings.
+     * Substitute variables in a term.
+     */
+    static Term substituteTerm(const Term& term, const BindingSet& bindings);
+    
+    /**
+     * Get the value of a term as a string, following variable bindings.
+     * For compound terms/lists, returns toString().
      */
     static std::string resolve(const Term& term, const BindingSet& bindings);
+    
+    /**
+     * Resolve a term and also return whether the result is still a variable.
+     * Returns (resolved_value_string, is_variable).
+     */
+    static std::pair<std::string, bool> resolveWithType(
+        const Term& term, 
+        const BindingSet& bindings);
+    
+    /**
+     * Fully resolve a term, returning a new Term with all variables substituted.
+     */
+    static Term resolveFull(const Term& term, const BindingSet& bindings);
 
-private:
+    /**
+     * Unify two lists of terms.
+     */
     static std::optional<BindingSet> unifyTerms(
         const std::vector<Term>& terms1,
         const std::vector<Term>& terms2,

@@ -8,25 +8,26 @@ namespace kbgdb {
 /**
  * QueryParser parses logic queries and rule definitions.
  * 
+ * Supports:
+ * - Simple terms: atoms, numbers, variables
+ * - Compound terms: f(X, Y), point(1, 2)
+ * - Lists: [], [1, 2, 3], [H|T], [a, b | Rest]
+ * 
  * Variable conventions:
  * - Query mode (default): Variables start with '?' (e.g., ?X, ?Name)
- *   The '?' is stripped when storing the variable.
- * 
- * - Rule mode: Variables are uppercase letters or start with '_'
- *   (e.g., X, Name, _X, _)
- * 
- * Constants are lowercase identifiers.
- * Numbers are sequences of digits.
+ * - Rule mode: Variables are uppercase or start with '_' (e.g., X, _X, _)
  */
 class QueryParser {
 public:
     /**
      * Parse a fact/query string.
-     * Examples:
-     *   Query mode:  "parent(?X, mary)" -> parent with var X and const mary
-     *   Rule mode:   "parent(X, mary)"  -> parent with var X and const mary
      */
     Fact parse(const std::string& input);
+    
+    /**
+     * Parse a single term (for testing or standalone use)
+     */
+    Term parseTerm(const std::string& input);
     
     /**
      * Set whether we're parsing rule definitions (uppercase vars)
@@ -38,12 +39,16 @@ public:
 private:
     struct Token {
         enum Type {
-            IDENTIFIER,
-            VARIABLE,
-            NUMBER,
-            LPAREN,
-            RPAREN,
-            COMMA
+            IDENTIFIER,     // lowercase atom
+            VARIABLE,       // variable
+            NUMBER,         // numeric literal
+            LPAREN,         // (
+            RPAREN,         // )
+            LBRACKET,       // [
+            RBRACKET,       // ]
+            PIPE,           // |
+            COMMA,          // ,
+            END             // end of input
         };
         Type type;
         std::string value;
@@ -55,7 +60,10 @@ private:
 
     std::vector<Token> tokenize(const std::string& input);
     void addToken(std::vector<Token>& tokens, const std::string& value);
-    Term parseTerm();
+    
+    Term parseTermInternal();
+    Term parseList();
+    Term parseCompoundOrAtom();
     
     Token consume(Token::Type expected);
     bool check(Token::Type type) const;
